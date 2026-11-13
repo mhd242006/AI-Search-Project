@@ -224,8 +224,46 @@ def weighted_a_star_search(
         heuristic: Callable[[DeepCoreState, DeepCoreEnv], float],
         weight: float = 1.5,
 ) -> Optional[SearchMetrics]:
-    """TODO (Bonus): Implement Weighted A* ordering the frontier by f(n) = g(n) + W * h(n)."""
-    raise NotImplementedError
+    metrics = SearchMetrics(algorithm_name="Weighted A*")
+    start = env.get_initial_state()
+
+    frontier = [(heuristic(start, env) * weight, 0, id(start), start)]
+    best_costs = {start: 0}
+    explored = set()
+    parent = {start: (None, None)}
+
+    while frontier:
+        metrics.max_frontier_size = max(metrics.max_frontier_size, len(frontier))
+        metrics.max_memory_size = max(metrics.max_memory_size, len(frontier) + len(explored))
+
+        _, curr_cost, _, state = heapq.heappop(frontier)
+
+        if state in explored:
+            continue
+
+        if env.is_goal(state):
+            metrics.solved = True
+            metrics.solution_actions = _reconstruct_path(parent, state)
+            metrics.total_cost = curr_cost
+            return metrics
+
+        explored.add(state)
+        metrics.nodes_expanded += 1
+        metrics.explored_order.append(state.bot_pos)
+
+        for action, next_state, step_cost in env.get_successors(state):
+            metrics.nodes_generated += 1
+            new_cost = curr_cost + step_cost
+
+            if next_state not in explored:
+                if new_cost < best_costs.get(next_state, float('inf')):
+                    best_costs[next_state] = new_cost
+                    parent[next_state] = (state, action.value)
+                    f_val = new_cost + weight * heuristic(next_state, env)
+                    heapq.heappush(frontier, (f_val, new_cost, id(next_state), next_state))
+
+    metrics.status_message = "No solution found."
+    return metrics
 
 
 # =============================================================================
@@ -236,8 +274,56 @@ def ida_star_search(
         heuristic: Callable[[DeepCoreState, DeepCoreEnv], float],
         max_expansions: Optional[int] = None,
 ) -> Optional[SearchMetrics]:
-    """TODO (Bonus): Implement Iterative Deepening A* (IDA*) using f-cost threshold contours."""
-    raise NotImplementedError
+    metrics = SearchMetrics(algorithm_name="IDA*")
+    start = env.get_initial_state()
+
+    if env.is_goal(start):
+        metrics.solved = True
+        return metrics
+
+    threshold = heuristic(start, env)
+
+    while True:
+        stack = [(start, 0, [start])]
+        parent = {start: (None, None)}
+        next_threshold = float('inf')
+
+        while stack:
+            if max_expansions is not None and metrics.nodes_expanded >= max_expansions:
+                metrics.status_message = "Expansion limit reached."
+                return metrics
+
+            metrics.max_frontier_size = max(metrics.max_frontier_size, len(stack))
+            metrics.max_memory_size = max(metrics.max_memory_size, len(stack))
+
+            state, g, path = stack.pop()
+
+            f = g + heuristic(state, env)
+            if f > threshold:
+                if f < next_threshold:
+                    next_threshold = f
+                continue
+
+            metrics.nodes_expanded += 1
+            metrics.explored_order.append(state.bot_pos)
+
+            if env.is_goal(state):
+                metrics.solved = True
+                metrics.solution_actions = _reconstruct_path(parent, state)
+                metrics.total_cost = g
+                return metrics
+
+            for action, next_state, step_cost in env.get_successors(state):
+                metrics.nodes_generated += 1
+                if next_state not in path:
+                    parent[next_state] = (state, action.value)
+                    stack.append((next_state, g + step_cost, path + [next_state]))
+
+        if next_threshold == float('inf'):
+            metrics.status_message = "No solution found."
+            return metrics
+
+        threshold = next_threshold
 
 
 # =============================================================================
@@ -248,5 +334,51 @@ def sma_star_search(
         heuristic: Callable[[DeepCoreState, DeepCoreEnv], float],
         memory_limit: Optional[int] = None,
 ) -> Optional[SearchMetrics]:
-    """TODO (Bonus): Implement Simplified Memory-Bounded A* (SMA*)."""
-    raise NotImplementedError
+    if memory_limit is None or memory_limit <= 0:
+        return a_star_search(env, heuristic)
+
+    metrics = SearchMetrics(algorithm_name="SMA*")
+    start = env.get_initial_state()
+
+    frontier = [(heuristic(start, env), 0, id(start), start)]
+    best_costs = {start: 0}
+    explored = set()
+    parent = {start: (None, None)}
+
+    while frontier:
+        metrics.max_frontier_size = max(metrics.max_frontier_size, len(frontier))
+        metrics.max_memory_size = max(metrics.max_memory_size, len(frontier) + len(explored))
+
+        if len(frontier) + len(explored) > memory_limit and len(frontier) > 1:
+            frontier.sort(key=lambda x: x[0])
+            frontier.pop()
+            heapq.heapify(frontier)
+
+        _, curr_cost, _, state = heapq.heappop(frontier)
+
+        if state in explored:
+            continue
+
+        if env.is_goal(state):
+            metrics.solved = True
+            metrics.solution_actions = _reconstruct_path(parent, state)
+            metrics.total_cost = curr_cost
+            return metrics
+
+        explored.add(state)
+        metrics.nodes_expanded += 1
+        metrics.explored_order.append(state.bot_pos)
+
+        for action, next_state, step_cost in env.get_successors(state):
+            metrics.nodes_generated += 1
+            new_cost = curr_cost + step_cost
+
+            if next_state not in explored:
+                if new_cost < best_costs.get(next_state, float('inf')):
+                    best_costs[next_state] = new_cost
+                    parent[next_state] = (state, action.value)
+                    f_val = new_cost + heuristic(next_state, env)
+                    heapq.heappush(frontier, (f_val, new_cost, id(next_state), next_state))
+
+    metrics.status_message = "No solution found."
+    return metrics
