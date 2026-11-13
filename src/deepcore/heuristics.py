@@ -85,8 +85,24 @@ def h_naive_manhattan(state: DeepCoreState, env: DeepCoreEnv) -> float:
 
 
 def h1_basic(state: DeepCoreState, env: DeepCoreEnv) -> float:
-    """TODO: Build an admissible MST-plus-payload lower bound; return 0 at a goal."""
-    raise NotImplementedError
+    if env.is_goal(state):
+        return 0.0
+
+    dist_map = _get_wall_aware_distances(env)
+
+    def get_d(u, v):
+        return dist_map.get((u, v), float('inf'))
+
+    if not state.miners:
+        return float(get_d(state.bot_pos, env.elevator_pos))
+
+    miners = list(state.miners)
+    mst_weight = _prim_mst_cost(miners, get_d)
+
+    to_miners = min((get_d(state.bot_pos, m) for m in miners), default=0)
+    to_elevator = min((get_d(m, env.elevator_pos) for m in miners), default=0)
+
+    return float(to_miners + mst_weight + to_elevator)
 
 
 def _is_corner_deadlock(pos: Pos, env: DeepCoreEnv) -> bool:
@@ -100,5 +116,8 @@ def _is_corner_deadlock(pos: Pos, env: DeepCoreEnv) -> bool:
 
 
 def h2_advanced(state: DeepCoreState, env: DeepCoreEnv) -> float:
-    """TODO: Strengthen H1 while preserving admissibility and dominance."""
-    raise NotImplementedError
+    if getattr(state, 'boulders', None):
+        if any(_is_corner_deadlock(b, env) for b in state.boulders):
+            return float('inf')
+
+    return h1_basic(state, env)

@@ -18,8 +18,8 @@ from .state import DeepCoreState, SearchMetrics
 
 
 def _reconstruct_path(
-    parent_map: Dict[DeepCoreState, Tuple[Optional[DeepCoreState], Optional[str]]],
-    goal_state: DeepCoreState,
+        parent_map: Dict[DeepCoreState, Tuple[Optional[DeepCoreState], Optional[str]]],
+        goal_state: DeepCoreState,
 ) -> List[str]:
     """Helper function to trace actions from the initial state to `goal_state`."""
     actions: List[str] = []
@@ -90,9 +90,9 @@ def depth_first_search(env: DeepCoreEnv, max_expansions: Optional[int] = None) -
 
 
 def iterative_deepening_search(
-    env: DeepCoreEnv,
-    max_depth: Optional[int] = None,
-    max_expansions: Optional[int] = None,
+        env: DeepCoreEnv,
+        max_depth: Optional[int] = None,
+        max_expansions: Optional[int] = None,
 ) -> Optional[SearchMetrics]:
     """TODO: Implement Iterative Deepening Search (IDS)."""
     raise NotImplementedError
@@ -121,29 +121,108 @@ def uniform_cost_search(env: DeepCoreEnv) -> Optional[SearchMetrics]:
 # 5. Greedy Best-First Search (GBFS) — [STUDENT TODO]
 # =============================================================================
 def greedy_best_first_search(
-    env: DeepCoreEnv, heuristic: Callable[[DeepCoreState, DeepCoreEnv], float]
+        env: DeepCoreEnv, heuristic: Callable[[DeepCoreState, DeepCoreEnv], float]
 ) -> Optional[SearchMetrics]:
-    """TODO: Implement Greedy Best-First Search ordering the priority queue strictly by h(n)."""
-    raise NotImplementedError
+    metrics = SearchMetrics(algorithm_name="GBFS")
+    start = env.get_initial_state()
+
+    if env.is_goal(start):
+        metrics.solved = True
+        return metrics
+
+    frontier = [(heuristic(start, env), id(start), start)]
+    explored = set()
+    parent = {start: (None, None)}
+    cost_so_far = {start: 0}
+
+    while frontier:
+        metrics.max_frontier_size = max(metrics.max_frontier_size, len(frontier))
+        metrics.max_memory_size = max(metrics.max_memory_size, len(frontier) + len(explored))
+
+        _, _, state = heapq.heappop(frontier)
+
+        if state in explored:
+            continue
+
+        if env.is_goal(state):
+            metrics.solved = True
+            metrics.solution_actions = _reconstruct_path(parent, state)
+            metrics.total_cost = cost_so_far[state]
+            return metrics
+
+        explored.add(state)
+        metrics.nodes_expanded += 1
+        metrics.explored_order.append(state.bot_pos)
+
+        for action, next_state, step_cost in env.get_successors(state):
+            metrics.nodes_generated += 1
+            if next_state not in explored:
+                new_cost = cost_so_far[state] + step_cost
+                if next_state not in cost_so_far or new_cost < cost_so_far[next_state]:
+                    cost_so_far[next_state] = new_cost
+                    parent[next_state] = (state, action.value)
+                    h_val = heuristic(next_state, env)
+                    heapq.heappush(frontier, (h_val, id(next_state), next_state))
+
+    metrics.status_message = "No solution found."
+    return metrics
 
 
 # =============================================================================
 # 6. A* Search — [STUDENT TODO]
 # =============================================================================
 def a_star_search(
-    env: DeepCoreEnv, heuristic: Callable[[DeepCoreState, DeepCoreEnv], float]
+        env: DeepCoreEnv, heuristic: Callable[[DeepCoreState, DeepCoreEnv], float]
 ) -> Optional[SearchMetrics]:
-    """TODO: Implement A* Graph Search ordering the priority queue by f(n) = g(n) + h(n)."""
-    raise NotImplementedError
+    metrics = SearchMetrics(algorithm_name="A*")
+    start = env.get_initial_state()
+
+    frontier = [(heuristic(start, env), 0, id(start), start)]
+    best_costs = {start: 0}
+    explored = set()
+    parent = {start: (None, None)}
+
+    while frontier:
+        metrics.max_frontier_size = max(metrics.max_frontier_size, len(frontier))
+        metrics.max_memory_size = max(metrics.max_memory_size, len(frontier) + len(explored))
+
+        _, curr_cost, _, state = heapq.heappop(frontier)
+
+        if state in explored:
+            continue
+
+        if env.is_goal(state):
+            metrics.solved = True
+            metrics.solution_actions = _reconstruct_path(parent, state)
+            metrics.total_cost = curr_cost
+            return metrics
+
+        explored.add(state)
+        metrics.nodes_expanded += 1
+        metrics.explored_order.append(state.bot_pos)
+
+        for action, next_state, step_cost in env.get_successors(state):
+            metrics.nodes_generated += 1
+            new_cost = curr_cost + step_cost
+
+            if next_state not in explored:
+                if new_cost < best_costs.get(next_state, float('inf')):
+                    best_costs[next_state] = new_cost
+                    parent[next_state] = (state, action.value)
+                    f_val = new_cost + heuristic(next_state, env)
+                    heapq.heappush(frontier, (f_val, new_cost, id(next_state), next_state))
+
+    metrics.status_message = "No solution found."
+    return metrics
 
 
 # =============================================================================
 # BONUS 1: Weighted A* Search — [STUDENT BONUS TODO]
 # =============================================================================
 def weighted_a_star_search(
-    env: DeepCoreEnv,
-    heuristic: Callable[[DeepCoreState, DeepCoreEnv], float],
-    weight: float = 1.5,
+        env: DeepCoreEnv,
+        heuristic: Callable[[DeepCoreState, DeepCoreEnv], float],
+        weight: float = 1.5,
 ) -> Optional[SearchMetrics]:
     """TODO (Bonus): Implement Weighted A* ordering the frontier by f(n) = g(n) + W * h(n)."""
     raise NotImplementedError
@@ -153,9 +232,9 @@ def weighted_a_star_search(
 # BONUS 2: Iterative Deepening A* (IDA*) — [STUDENT BONUS TODO]
 # =============================================================================
 def ida_star_search(
-    env: DeepCoreEnv,
-    heuristic: Callable[[DeepCoreState, DeepCoreEnv], float],
-    max_expansions: Optional[int] = None,
+        env: DeepCoreEnv,
+        heuristic: Callable[[DeepCoreState, DeepCoreEnv], float],
+        max_expansions: Optional[int] = None,
 ) -> Optional[SearchMetrics]:
     """TODO (Bonus): Implement Iterative Deepening A* (IDA*) using f-cost threshold contours."""
     raise NotImplementedError
@@ -165,9 +244,9 @@ def ida_star_search(
 # BONUS 3: Simplified Memory-Bounded A* (SMA*) — [STUDENT BONUS TODO]
 # =============================================================================
 def sma_star_search(
-    env: DeepCoreEnv,
-    heuristic: Callable[[DeepCoreState, DeepCoreEnv], float],
-    memory_limit: Optional[int] = None,
+        env: DeepCoreEnv,
+        heuristic: Callable[[DeepCoreState, DeepCoreEnv], float],
+        memory_limit: Optional[int] = None,
 ) -> Optional[SearchMetrics]:
     """TODO (Bonus): Implement Simplified Memory-Bounded A* (SMA*)."""
     raise NotImplementedError
