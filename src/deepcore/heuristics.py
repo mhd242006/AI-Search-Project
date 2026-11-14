@@ -1,9 +1,9 @@
 """
 heuristics.py
 Student heuristic starter file for DeepCore:
-  - h_naive_manhattan : provided baseline
-  - h1_basic          : required student implementation
-  - h2_advanced       : required student implementation
+- h_naive_manhattan : provided baseline
+- h1_basic          : required student implementation
+- h2_advanced       : required student implementation
 """
 
 from typing import Dict, List, Tuple
@@ -11,7 +11,6 @@ from collections import deque
 from .environment import DeepCoreEnv, DIRECTION_DELTAS
 from .state import DeepCoreState, Pos
 
-# Cache wall-aware shortest path distances per environment instance
 _WALL_DIST_CACHE: Dict[int, Dict[Tuple[Pos, Pos], int]] = {}
 
 
@@ -88,21 +87,24 @@ def h1_basic(state: DeepCoreState, env: DeepCoreEnv) -> float:
     if env.is_goal(state):
         return 0.0
 
-    dist_map = _get_wall_aware_distances(env)
+    def manhattan(u: Pos, v: Pos) -> int:
+        return abs(u[0] - v[0]) + abs(u[1] - v[1])
 
-    def get_d(u, v):
-        return dist_map.get((u, v), float('inf'))
-
+    k = getattr(state, "carried", 0)
     if not state.miners:
-        return float(get_d(state.bot_pos, env.elevator_pos))
+        return float(manhattan(state.bot_pos, env.elevator_pos) * (1 + 2 * k))
 
     miners = list(state.miners)
-    mst_weight = _prim_mst_cost(miners, get_d)
+    m = len(miners)
+    mst_steps = _prim_mst_cost(miners, manhattan)
+    to_miners = min(manhattan(state.bot_pos, p) for p in miners)
+    to_elevator = min(manhattan(p, env.elevator_pos) for p in miners)
 
-    to_miners = min((get_d(state.bot_pos, m) for m in miners), default=0)
-    to_elevator = min((get_d(m, env.elevator_pos) for m in miners), default=0)
-
-    return float(to_miners + mst_weight + to_elevator)
+    return float(
+        to_miners * (1 + 2 * k)
+        + mst_steps * (1 + 2 * (k + 1))
+        + to_elevator * (1 + 2 * (k + m))
+    )
 
 
 def _is_corner_deadlock(pos: Pos, env: DeepCoreEnv) -> bool:
@@ -116,8 +118,26 @@ def _is_corner_deadlock(pos: Pos, env: DeepCoreEnv) -> bool:
 
 
 def h2_advanced(state: DeepCoreState, env: DeepCoreEnv) -> float:
-    if getattr(state, 'boulders', None):
-        if any(_is_corner_deadlock(b, env) for b in state.boulders):
-            return float('inf')
+    if env.is_goal(state):
+        return 0.0
 
-    return h1_basic(state, env)
+    dist_map = _get_wall_aware_distances(env)
+
+    def get_d(u: Pos, v: Pos) -> float:
+        return float(dist_map.get((u, v), abs(u[0] - v[0]) + abs(u[1] - v[1])))
+
+    k = getattr(state, "carried", 0)
+    if not state.miners:
+        return float(get_d(state.bot_pos, env.elevator_pos) * (1 + 2 * k))
+
+    miners = list(state.miners)
+    m = len(miners)
+    mst_steps = _prim_mst_cost(miners, get_d)
+    to_miners = min(get_d(state.bot_pos, p) for p in miners)
+    to_elevator = min(get_d(p, env.elevator_pos) for p in miners)
+
+    return float(
+        to_miners * (1 + 2 * k)
+        + mst_steps * (1 + 2 * (k + 1))
+        + to_elevator * (1 + 2 * (k + m))
+    )
